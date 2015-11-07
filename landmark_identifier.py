@@ -6,10 +6,10 @@ import math
 class LandmarkIdentifier(object):
     "handle series of transforms from raw data to walls and landmarks"
 
-    T = 5
-    INTERCEPT_THRESHOLD = 1
-    SLOPE_THRESHOLD = .1
-    min_points = 2
+    T = 15
+    SLOPE_THRESHOLD = 0.5
+    INT_THRESHOLD = 50
+    MIN_PTS = 5
 
     def __init__(self, gc):
         self.gc = gc
@@ -23,7 +23,7 @@ class LandmarkIdentifier(object):
         # recursively split data into "walls"
 
         #first turn polar into x,y
-        angles = range(360)
+        angles = range(len(radius))
 
         xs = []
         ys = []
@@ -31,7 +31,7 @@ class LandmarkIdentifier(object):
         #reset some stuff
         self.lines = []
 
-        for i in range(360):
+        for i in range(len(radius)):
             d = radius[i]
             t = angles[i] * math.pi / 180
             if (d != Lidar.INVALID_DISTANCE):
@@ -39,78 +39,65 @@ class LandmarkIdentifier(object):
                 y = math.sin(t)*d
                 xs.append(x)
                 ys.append(y)
-
-                #scale for displaying
-                x *= 0.2
-                y *= 0.2
+                #self.gc.add_point(x,y)
 
         self.data = zip(xs,ys) # gives us list of tuples
+
         self.split(self.data)
-
-#        for line in self.lines:
-#            self.graph_trendline(line)
-
         self.merge()
 
         for line in self.lines:
             self.graph_trendline(line)
 
+        print "found ", len(self.lines), " lines"
+
+
     def split(self, current_data):
         midpoint = len(current_data)/2
 
         # data is list of two-tuples
-        if (len(current_data) > self.min_points):
-            self.fitPoints(current_data)
-            index, distance = self.farthestPointFromLine(current_data)
+        self.fitPoints(current_data)
+        index, distance = self.farthestPointFromLine(current_data)
 
-            if (abs(distance) > self.T):
-                firstHalf = current_data[:midpoint]
-                secondHalf = current_data[midpoint+1:]
+        if (abs(distance) > self.T):
+            firstHalf = current_data[:midpoint]
+            secondHalf = current_data[midpoint:]
 
-                self.split(firstHalf)
-                self.split(secondHalf)
-            else:
+            self.split(firstHalf)
+            self.split(secondHalf)
+        elif (len(current_data) > self.MIN_PTS):
                 # cool, we found a good enough line
                 line = (self.reg.coef_[0], self.reg.intercept_, current_data)
                 self.lines.append(line)
 
     def merge(self):
-        print "starting with ", len(self.lines), "lines"
-        l = len(self.lines)
         i = 0
-        while (i<l-1):
+        while (i<len(self.lines)-1):
             line1 = self.lines[i]
             line2 = self.lines[i+1]
 
             d_slope = line1[0] - line2[0]
-            d_intercept = line1[1] - line2[1]
+            d_int = line1[1] - line2[1]
 
-            if abs(d_slope) < self.SLOPE_THRESHOLD and abs(d_intercept) < self.INTERCEPT_THRESHOLD:
-                #merge da lines
+            if abs(d_slope) < self.SLOPE_THRESHOLD and abs(d_int) < self.INT_THRESHOLD:
                 merged_data = line1[2] + line2[2]
                 self.fitPoints(merged_data)
-                index, distance = self.farthestPointFromLine(merged_data)
+                index,distance = self.farthestPointFromLine(merged_data)
+                merged_line = (self.reg.coef_[0],self.reg.intercept_,merged_data)
+                self.lines[i] = merged_line
+                del self.lines[i+1]
+                i -= 1
 
-                if (distance < self.T):
-                    merged_line = (self.reg.coef_[0],
-                            self.reg.intercept_,
-                            merged_data)
-                    self.lines[i] = merged_line
-                    self.lines.remove(line2)
-                    break;
-            i+=1
-
-        for j in range(i,l-1):
-            self.lines.pop()
-
-        print "trimmed down to ", len(self.lines), "lines"
+            i += 1
 
     def graph_trendline(self, line):
-        lx1 =line[2][0][0]*.2
-        ly1 = (line[0]*line[2][0][0] + line[1])*0.2
-        lx2 = line[2][-1][0]*.2
-        ly2 = (line[0]*line[2][-1][0] + line[1])*0.2
+        lx1 = line[2][0][0]
+        ly1 = (line[0]*line[2][0][0] + line[1])
+        lx2 = line[2][-1][0]
+        ly2 = (line[0]*line[2][-1][0] + line[1])
         self.gc.add_line(lx1,ly1,lx2,ly2)
+        self.gc.add_point(lx1,ly1)
+        self.gc.add_point(lx2,ly2)
 
     def createLandmark(self):
         m1 = self.reg.coef_[0]
@@ -148,7 +135,4 @@ class LandmarkIdentifier(object):
 
             i += 1
 
-        x = max_p[0]*0.2
-        y = max_p[1]*0.2
-        #self.gc.add_point(x,y)
         return max_i, max_error
