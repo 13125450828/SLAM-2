@@ -3,7 +3,9 @@ import serial
 class Lidar(object):
     'class to represent vx-11 lidar'
 
-    distances = [0] * 360
+    INVALID_DISTANCE = 1000
+
+    distances = [INVALID_DISTANCE] * 360
     packet = [0] * 22
 
     startReading = False
@@ -51,7 +53,7 @@ class Lidar(object):
                     self.distanceIndex = (newPacketNumber - 0xA0) * 4 + i/4 - 1
                     if self.distanceIndex >= 0 and self.distanceIndex < 360:
                         if (self.packet[i+1] & 0x80) >> 7:
-                            self.distances[self.distanceIndex] = 0
+                            self.distances[self.distanceIndex] = self.INVALID_DISTANCE
                         else:
                             d = self.packet[i] | ((self.packet[i+1] & 0x3F) << 8)
 

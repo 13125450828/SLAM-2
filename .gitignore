@@ -1,3 +1,4 @@
 .build_ano
+*.ods#
 *.pyc
 docs
